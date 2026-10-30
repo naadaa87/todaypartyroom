@@ -3,7 +3,7 @@ import { api, requireHost } from '../../../../../lib/auth.js';
 import { run, all, one, insertId, getSettings } from '../../../../../lib/db.js';
 import { json, err, readBody, toInt, clamp, todayStr, addDays, nowStr, parseJSON, slotStartDT, minutesBetween, fmtDT } from '../../../../../lib/util.js';
 import { ownSpace } from '../../../../../lib/host-api.js';
-import { loadDeals, slotBasePrice, applyDiscount, TYPE_LONG } from '../../../../../lib/deals.js';
+import { loadDeals, slotBasePrice, applyDiscount, TYPE_LONG, slotDeadline } from '../../../../../lib/deals.js';
 const D = /^\d{4}-\d{2}-\d{2}$/, DT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 export const onRequestGet = api(async (context) => {
@@ -44,7 +44,7 @@ export const onRequestPost = api(async (context) => {
   }
   const floor = Math.max(0, toInt(b.floor_price, 0));
   // 기간
-  const latestStart = targets.map(t => slotStartDT(t.date, slotById.get(t.slot_id).start_time)).sort().slice(-1)[0];
+  const latestStart = targets.map(t => slotDeadline(slotById.get(t.slot_id), t.date, settings.deal_cutoff_minutes)).sort().slice(-1)[0];
   let starts_at = DT.test(b.starts_at || '') && b.starts_at > now ? b.starts_at : now;
   let ends_at = DT.test(b.ends_at || '') ? b.ends_at : latestStart;
   if (type === 'FLASH') {

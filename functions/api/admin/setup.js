@@ -1,11 +1,16 @@
-// POST /api/admin/setup — 최초 관리자 생성(관리자가 없을 때만)
+// GET /api/admin/setup — 설치·최초 관리자 필요 여부 / POST 최초 관리자 생성
 import { api, hashPassword, sessionCookie, COOKIE_ADMIN } from '../../../lib/auth.js';
 import { one, insertId } from '../../../lib/db.js';
 import { json, err, readBody } from '../../../lib/util.js';
-export const onRequestGet = api(async ({ env }) => { const c = await one(env.DB, 'SELECT COUNT(*) AS n FROM admins'); return json({ ok: true, needs_setup: c.n === 0 }); });
+import { dbState } from './install.js';
+export const onRequestGet = api(async ({ env }) => {
+  const s = await dbState(env.DB);
+  return json({ ok: true, needs_install: !s.installed, needs_setup: s.installed && s.admins === 0 });
+});
 export const onRequestPost = api(async ({ env, request }) => {
-  const c = await one(env.DB, 'SELECT COUNT(*) AS n FROM admins');
-  if (c.n > 0) return err('이미 관리자가 있습니다. 로그인해 주세요.', 403);
+  const s = await dbState(env.DB);
+  if (!s.installed) return err('먼저 DB 준비하기를 실행하세요.', 400);
+  if (s.admins > 0) return err('이미 관리자가 있습니다. 로그인해 주세요.', 403);
   const b = await readBody(request);
   const email = String(b.email || '').trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err('이메일을 확인해 주세요.');

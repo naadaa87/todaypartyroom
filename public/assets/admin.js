@@ -25,7 +25,10 @@
   async function route() {
     const [name, id] = (location.hash.replace(/^#/, '').split('?')[0] || 'dash').split('/');
     if (!S.admin) {
-      const st = await api('/api/admin/setup');
+      let st;
+      try { st = await api('/api/admin/setup'); }
+      catch (e) { shell(`<div class="auth-box"><h1>연결 확인이 필요합니다</h1><p class="msg">${h(e.message)}</p><p class="muted">Cloudflare Pages → Settings → Bindings 에 D1 바인딩(변수명 DB)이 있는지, 추가 후 다시 배포했는지 확인하세요.</p></div>`); return; }
+      if (st.needs_install) return renderInstall();
       if (st.needs_setup) return renderSetup();
       return renderLogin();
     }
@@ -34,6 +37,10 @@
   }
   window.addEventListener('hashchange', route);
 
+  function renderInstall() {
+    shell(`<div class="auth-box"><h1>DB 준비하기</h1><p class="muted">연결된 D1 데이터베이스에 오늘의파티룸 테이블과 기본 지역·테마·설정값을 만듭니다. 처음 한 번만 하면 됩니다.</p>
+    <form class="form" data-form="install"><label class="inline"><input type="checkbox" name="seed" checked> 샘플 공간 3곳과 매거진 글도 함께 넣기 <span class="mini">(화면 확인용, 나중에 설정 메뉴에서 한 번에 삭제 가능)</span></label><p class="msg"></p><button class="btn btn-p btn-lg" type="submit">DB 준비하기</button></form></div>`);
+  }
   function renderSetup() {
     shell(`<div class="auth-box"><h1>최초 관리자 만들기</h1><p class="muted">아직 관리자가 없습니다. 첫 관리자 계정을 만드세요. 이 화면은 한 번만 나타납니다.</p><form class="form" data-form="setup"><label>이름<input name="name" value="관리자"></label><label>이메일<input name="email" type="email" required></label><label>비밀번호 (10자 이상)<input name="password" type="password" minlength="10" required></label><p class="msg"></p><button class="btn btn-p btn-lg" type="submit">만들고 로그인</button></form></div>`);
   }
@@ -139,7 +146,9 @@
       <label>공휴일 (JSON 배열)<textarea name="holidays" rows="3" class="code">${h(s.holidays || '[]')}</textarea></label>
       <label>편의시설 목록 (JSON 배열)<textarea name="amenities" rows="3" class="code">${h(s.amenities || '[]')}</textarea></label>
       <label>함께하는 사이트(푸터, JSON: [{"name":"...","url":"..."}])<textarea name="footer_links" rows="3" class="code">${h(s.footer_links || '[]')}</textarea></label>
-      <p class="msg"></p><div class="actions"><button class="btn btn-p" type="submit">저장</button></div></form></div>`, 'settings');
+      <p class="msg"></p><div class="actions"><button class="btn btn-p" type="submit">저장</button></div></form></div>
+      <div class="panel"><h2>DB 관리</h2><p class="mini" data-dbstate>상태 확인 중…</p><div class="actions"><button type="button" class="btn btn-o" data-db="install">DB 점검·업데이트</button><button type="button" class="btn btn-o" data-db="seed">샘플 데이터 넣기</button><button type="button" class="btn btn-o" data-db="remove_demo">샘플 데이터 삭제</button></div><p class="hint">DB 점검·업데이트는 빠진 테이블과 기본값만 채우고 기존 데이터는 건드리지 않습니다. 실제 오픈 전에는 샘플 데이터를 삭제하세요.</p></div>`, 'settings');
+    try { const st = await api('/api/admin/install'); $('[data-dbstate]').textContent = `테이블 ${st.tables}개 · 관리자 ${st.admins}명 · 샘플 데이터 ${st.demo ? '있음' : '없음'} · 스키마 v${st.version}`; } catch (e) { $('[data-dbstate]').textContent = e.message; }
   }
 
   /* ---- 이벤트 ---- */
@@ -149,7 +158,8 @@
     const k = f.dataset.form, o = fd2obj(f), msg = $('.msg', f), id = f.dataset.id;
     if (msg) { msg.textContent = ''; msg.classList.remove('ok'); }
     try {
-      if (k === 'setup') { await api('/api/admin/setup', { method: 'POST', body: o }); S.admin = (await api('/api/admin/me')).admin; location.hash = 'dash'; route(); }
+      if (k === 'install') { const btn = $('button[type=submit]', f); btn.disabled = true; btn.textContent = '준비 중…'; await api('/api/admin/install', { method: 'POST', body: { action: 'install', seed: !!o.seed } }); toast('DB를 준비했어요. 이제 관리자 계정을 만드세요.'); route(); }
+      else if (k === 'setup') { await api('/api/admin/setup', { method: 'POST', body: o }); S.admin = (await api('/api/admin/me')).admin; location.hash = 'dash'; route(); }
       else if (k === 'login') { await api('/api/admin/login', { method: 'POST', body: o }); S.admin = (await api('/api/admin/me')).admin; route(); }
       else if (k === 'spaces-filter') { location.hash = `spaces?status=${o.status}&q=${encodeURIComponent(o.q)}`; }
       else if (k === 'subscription') { await api(`/api/admin/spaces/${location.hash.split('/')[1]}`, { method: 'PUT', body: { action: 'subscription', status: o.status, until: o.until } }); toast('저장했어요.'); }
@@ -166,6 +176,7 @@
     const a = e.target.closest('[data-act=logout]'); if (a) { await api('/api/admin/logout', { method: 'POST' }); S.admin = null; route(); }
     const hs = e.target.closest('[data-host]'); if (hs) { try { await api(`/api/admin/hosts/${hs.dataset.id}`, { method: 'PUT', body: { action: hs.dataset.host } }); route(); } catch (err) { toast(err.message); } }
     const ds = e.target.closest('[data-dealstop]'); if (ds && confirm('이 딜을 중지할까요?')) { try { await api(`/api/admin/deals/${ds.dataset.dealstop}`, { method: 'PUT', body: { action: 'stop' } }); route(); } catch (err) { toast(err.message); } }
+    const db = e.target.closest('[data-db]'); if (db) { const label = { install: 'DB 점검·업데이트를 실행할까요?', seed: '샘플 공간 3곳과 매거진 글을 넣을까요?', remove_demo: '샘플 데이터(공간 3곳·샘플 호스트·매거진 글)를 삭제할까요?' }[db.dataset.db]; if (confirm(label)) { try { await api('/api/admin/install', { method: 'POST', body: { action: db.dataset.db } }); toast('완료했어요.'); route(); } catch (err) { toast(err.message); } } }
     const re = e.target.closest('[data-region-edit]'); if (re) regionEditor(Number(re.dataset.regionEdit));
     const ad = e.target.closest('[data-article-del]'); if (ad && confirm('삭제할까요?')) { await api(`/api/admin/articles/${ad.dataset.articleDel}`, { method: 'DELETE' }); location.hash = 'articles'; }
   });

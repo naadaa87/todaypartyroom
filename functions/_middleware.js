@@ -6,7 +6,7 @@ export async function onRequest(context) {
     const msg = 'D1 바인딩(DB)이 설정되지 않았습니다. Cloudflare Pages → Settings → Bindings 에서 D1 database 바인딩 변수명을 DB 로 추가한 뒤 다시 배포하세요.';
     return url.pathname.startsWith('/api/')
       ? new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } })
-      : new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:40px;max-width:640px"><h2>설정이 필요합니다</h2><p>${msg}</p><p>schema.sql 을 D1 콘솔에서 실행했는지도 확인하세요.</p></body>`, { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } });
+      : new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:40px;max-width:640px"><h2>설정이 필요합니다</h2><p>${msg}</p><p>바인딩을 추가한 뒤에는 Deployments 탭에서 Retry deployment로 다시 배포해야 적용됩니다.</p></body>`, { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } });
   }
   try {
     const res = await context.next();
@@ -19,9 +19,9 @@ export async function onRequest(context) {
     console.error(e);
     const isApi = url.pathname.startsWith('/api/');
     const missing = /no such table/i.test(String(e.message || e));
-    const msg = missing ? 'DB 테이블이 없습니다. schema.sql 을 D1 콘솔에서 실행하세요.' : ('오류: ' + (e.message || e));
+    const msg = missing ? 'DB가 아직 준비되지 않았습니다. 관리자 화면(/admin)에서 "DB 준비하기" 버튼을 눌러 주세요.' : ('오류: ' + (e.message || e));
     return isApi
       ? new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } })
-      : new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:40px;max-width:640px"><h2>일시적인 오류</h2><p>${msg}</p><p><a href="/">홈으로</a></p></body>`, { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } });
+      : new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:40px;max-width:640px"><h2>일시적인 오류</h2><p>${msg}</p><p>${missing ? '<a href="/admin">관리자 화면으로 이동</a>' : '<a href="/">홈으로</a>'}</p></body>`, { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } });
   }
 }
