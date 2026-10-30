@@ -1,0 +1,27 @@
+// 전역 미들웨어: 오류 처리, 보안 헤더, DB 바인딩 확인
+export async function onRequest(context) {
+  const { env, request } = context;
+  const url = new URL(request.url);
+  if (!env.DB) {
+    const msg = 'D1 바인딩(DB)이 설정되지 않았습니다. Cloudflare Pages → Settings → Bindings 에서 D1 database 바인딩 변수명을 DB 로 추가한 뒤 다시 배포하세요.';
+    return url.pathname.startsWith('/api/')
+      ? new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } })
+      : new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:40px;max-width:640px"><h2>설정이 필요합니다</h2><p>${msg}</p><p>schema.sql 을 D1 콘솔에서 실행했는지도 확인하세요.</p></body>`, { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } });
+  }
+  try {
+    const res = await context.next();
+    const h = new Headers(res.headers);
+    h.set('x-content-type-options', 'nosniff');
+    h.set('referrer-policy', 'strict-origin-when-cross-origin');
+    if (!h.has('cache-control')) h.set('cache-control', 'private, max-age=0, must-revalidate');
+    return new Response(res.body, { status: res.status, headers: h });
+  } catch (e) {
+    console.error(e);
+    const isApi = url.pathname.startsWith('/api/');
+    const missing = /no such table/i.test(String(e.message || e));
+    const msg = missing ? 'DB 테이블이 없습니다. schema.sql 을 D1 콘솔에서 실행하세요.' : ('오류: ' + (e.message || e));
+    return isApi
+      ? new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } })
+      : new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:40px;max-width:640px"><h2>일시적인 오류</h2><p>${msg}</p><p><a href="/">홈으로</a></p></body>`, { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } });
+  }
+}
