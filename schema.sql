@@ -262,6 +262,55 @@ CREATE TABLE IF NOT EXISTS event_log (
 );
 CREATE INDEX IF NOT EXISTS idx_event_space ON event_log(space_id, type, created_at);
 
+-- 17) 자동 운영 설정 (공간당 1행): 매주 반복 공실 패턴, 일시정지, 캘린더(iCal) 연동
+CREATE TABLE IF NOT EXISTS space_automation (
+  space_id INTEGER PRIMARY KEY,
+  pattern_json TEXT DEFAULT '{}',   -- {"slot_id": ["vacant"|"closed"|"", ... 일~토 7칸]}
+  paused_until TEXT,                -- 이 날짜까지 자동 할인·반복 딜 멈춤
+  pause_note TEXT DEFAULT '',
+  ical_url TEXT DEFAULT '',
+  ical_allday INTEGER DEFAULT 1,    -- 종일 일정도 예약으로 볼지
+  ical_last_sync TEXT,
+  ical_last_result TEXT DEFAULT '',
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- 18) 반복 딜 예약 (매주 정해진 요일·시각에 자동으로 열리는 딜)
+CREATE TABLE IF NOT EXISTS deal_schedules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  space_id INTEGER NOT NULL,
+  enabled INTEGER DEFAULT 1,
+  name TEXT DEFAULT '',
+  type TEXT NOT NULL,               -- TIME | HOT | FLASH | EVENT | TODAY | TOMORROW
+  days_json TEXT DEFAULT '[]',      -- 이용일 요일 [0..6]
+  slot_ids_json TEXT DEFAULT '[]',
+  lead_days INTEGER DEFAULT 0,      -- 이용일 며칠 전에 열지 (0=당일)
+  open_time TEXT DEFAULT '10:00',   -- 여는 시각
+  duration_min INTEGER,             -- NULL = 슬롯 마감까지
+  discount_mode TEXT DEFAULT 'RATE',
+  discount_value INTEGER DEFAULT 0,
+  floor_price INTEGER DEFAULT 0,
+  quantity INTEGER,
+  only_vacant INTEGER DEFAULT 1,    -- 비어 있는 슬롯에만 열기
+  benefit_text TEXT DEFAULT '',
+  deal_link TEXT DEFAULT '',
+  start_date TEXT,
+  end_date TEXT,
+  skip_dates_json TEXT DEFAULT '[]',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sched_space ON deal_schedules(space_id, enabled);
+
+-- 19) 반복 딜 생성 기록 (같은 날짜에 두 번 만들지 않기 위한 표)
+CREATE TABLE IF NOT EXISTS schedule_runs (
+  schedule_id INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  deal_id INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (schedule_id, date)
+);
+
 -- =====================================================================
 -- 기본 설정값
 -- =====================================================================

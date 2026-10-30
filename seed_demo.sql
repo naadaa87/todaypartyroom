@@ -56,6 +56,16 @@ INSERT OR IGNORE INTO deals (id, space_id, type, origin, targets_json, discount_
  (9001, 9001, 'HOT', 'MANUAL', '[{"date":"' || date('now','+9 hours','+2 day') || '","slot_id":9001},{"date":"' || date('now','+9 hours','+3 day') || '","slot_id":9001},{"date":"' || date('now','+9 hours','+4 day') || '","slot_id":9001}]', 'RATE', 40, 0, 3, strftime('%Y-%m-%dT%H:%M','now','+9 hours'), date('now','+9 hours','+4 day') || 'T11:00', 'ACTIVE', '', '낮타임 핫딜 40%', '{}'),
  (9002, 9003, 'EVENT', 'MANUAL', '[{"date":"' || date('now','+9 hours','+1 day') || '","slot_id":9004},{"date":"' || date('now','+9 hours','+2 day') || '","slot_id":9004}]', 'RATE', 0, 0, NULL, strftime('%Y-%m-%dT%H:%M','now','+9 hours'), date('now','+9 hours','+2 day') || 'T18:00', 'ACTIVE', '생일 케이크 증정 + 1시간 연장 무료', '생일파티 이벤트', '{}');
 
+-- 자동 운영 예시: 매주 반복 공실 패턴 + 반복 딜
+INSERT OR IGNORE INTO space_automation (space_id, pattern_json) VALUES
+ (9001, '{"9001":["","vacant","vacant","vacant","vacant","",""],"9002":["","vacant","vacant","vacant","","",""]}'),
+ (9002, '{"9003":["vacant","vacant","vacant","vacant","vacant","vacant","vacant"]}'),
+ (9003, '{"9004":["vacant","vacant","vacant","vacant","","",""]}');
+
+INSERT OR IGNORE INTO deal_schedules (id, space_id, enabled, name, type, days_json, slot_ids_json, lead_days, open_time, duration_min, discount_mode, discount_value, quantity, only_vacant, start_date) VALUES
+ (9001, 9002, 1, '매일 오후 3시 타임딜', 'TIME', '[0,1,2,3,4,5,6]', '[9003]', 0, '15:00', 180, 'RATE', 30, NULL, 1, date('now','+9 hours')),
+ (9002, 9001, 1, '평일 낮타임 핫딜', 'HOT', '[1,2,3,4]', '[9001]', 2, '10:00', NULL, 'RATE', 35, 2, 1, date('now','+9 hours'));
+
 INSERT OR IGNORE INTO articles (id, slug, title, summary, body, category, region_id, published) VALUES
  (9001, 'hongdae-partyroom-guide', '홍대 파티룸 고르는 법: 인원·시간대·가격 기준 정리', '홍대 파티룸을 처음 예약할 때 확인할 다섯 가지와 당일 예약 요령.', '## 홍대 파티룸, 오늘 바로 예약할 수 있나요?
 가능합니다. 오늘의파티룸에서는 호스트가 비어 있다고 표시한 시간대가 당일·전날 할인가로 올라옵니다. 지역에서 홍대를 고른 뒤 "오늘" 탭을 보면 지금 예약 가능한 곳만 보입니다.
@@ -73,6 +83,9 @@ INSERT OR IGNORE INTO articles (id, slug, title, summary, body, category, region
 -- =====================================================================
 -- 샘플 삭제 (운영 전 실행)
 -- DELETE FROM claims WHERE space_id IN (9001,9002,9003);
+-- DELETE FROM schedule_runs WHERE schedule_id IN (SELECT id FROM deal_schedules WHERE space_id IN (9001,9002,9003));
+-- DELETE FROM deal_schedules WHERE space_id IN (9001,9002,9003);
+-- DELETE FROM space_automation WHERE space_id IN (9001,9002,9003);
 -- DELETE FROM deals WHERE space_id IN (9001,9002,9003);
 -- DELETE FROM vacancies WHERE space_id IN (9001,9002,9003);
 -- DELETE FROM auto_rules WHERE space_id IN (9001,9002,9003);

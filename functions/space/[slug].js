@@ -6,6 +6,7 @@ import { one, all, regionUrl, regionPath, run } from '../../lib/db.js';
 import { currentHost } from '../../lib/auth.js';
 import { html, esc, won, todayStr, addDays, dateLabel, parseJSON } from '../../lib/util.js';
 import { notFound } from '../[[path]].js';
+import { getVacancyMap, getAutomationMap, effStatus } from '../../lib/availability.js';
 
 export async function onRequestGet(context) {
   const p = await pageCtx(context);
@@ -30,7 +31,7 @@ export async function onRequestGet(context) {
     all(p.db, 'SELECT t.* FROM themes t JOIN space_themes st ON st.theme_id = t.id WHERE st.space_id = ? ORDER BY t.sort', [s.id]),
     one(p.db, 'SELECT id, name FROM hosts WHERE id = ?', [s.host_id]),
     all(p.db, `SELECT s.*, r.name AS region_name FROM spaces s LEFT JOIN regions r ON r.id = s.region_id WHERE s.host_id = ? AND s.id != ? AND ${LIVE_SQL} LIMIT 6`, [s.host_id, s.id, ...LIVE_PARAMS()]),
-    all(p.db, 'SELECT slot_id, date, status FROM vacancies WHERE space_id = ? AND date IN (?, ?)', [s.id, today, addDays(today, 1)]),
+    getVacancyMap(p.db, [s.id], today, addDays(today, 1)),
   ]);
   const nearby = region ? (await loadDeals(p.env, settings, { areaIds: [region.id], dateFilter: 'upcoming', limit: 7 })).filter(c => c.space.id !== s.id).slice(0, 6) : [];
   const photos = photosOf(s);
@@ -41,13 +42,14 @@ export async function onRequestGet(context) {
   // 오늘·내일 슬롯 칩
   const targetByKey = new Map();
   for (const c of deals) for (const t of c.targets) if (c.type !== 'EVENT') targetByKey.set(t.key, { c, t });
-  const vacMap = new Map(vac.map(v => [`${v.slot_id}|${v.date}`, v.status]));
+  const autoRow = (await getAutomationMap(p.db, [s.id])).get(s.id);
+  const pattern = autoRow ? autoRow.pattern : {};
   const chips = [];
   for (const d of [today, addDays(today, 1)]) {
     for (const sl of slots) {
       const key = `${s.id}|${sl.id}|${d}`;
       const hit = targetByKey.get(key);
-      const st = vacMap.get(`${sl.id}|${d}`);
+      const st = effStatus(vac, pattern, s.id, sl.id, d).status;
       const base = slotBasePrice(sl, d, settings.holidays);
       if (hit) chips.push(`<a class="slot on" href="${hit.c.virtual ? `?deal=${esc(hit.c.id)}#deals` : `/space/${esc(s.slug)}/deal/${esc(hit.c.id)}`}"><b>${esc(dateLabel(d))} ${esc(sl.name)}</b><span>${won(hit.t.price)} <em>${hit.t.rate}%</em></span></a>`);
       else if (st === 'booked') chips.push(`<span class="slot off"><b>${esc(dateLabel(d))} ${esc(sl.name)}</b><span>예약 마감</span></span>`);

@@ -1,4 +1,6 @@
-// 전역 미들웨어: 오류 처리, 보안 헤더, DB 바인딩 확인
+// 전역 미들웨어: 오류 처리, 보안 헤더, DB 바인딩 확인, 배포 후 DB 자동 업데이트, 자동 운영 주기 실행
+import { ensureSchema } from '../lib/migrate.js';
+import { maybeRunAutomation } from '../lib/automation.js';
 export async function onRequest(context) {
   const { env, request } = context;
   const url = new URL(request.url);
@@ -9,7 +11,9 @@ export async function onRequest(context) {
       : new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:40px;max-width:640px"><h2>설정이 필요합니다</h2><p>${msg}</p><p>바인딩을 추가한 뒤에는 Deployments 탭에서 Retry deployment로 다시 배포해야 적용됩니다.</p></body>`, { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } });
   }
   try {
+    await ensureSchema(env.DB);
     const res = await context.next();
+    if (context.waitUntil && !url.pathname.startsWith('/assets/')) context.waitUntil(maybeRunAutomation(env));
     const h = new Headers(res.headers);
     h.set('x-content-type-options', 'nosniff');
     h.set('referrer-policy', 'strict-origin-when-cross-origin');

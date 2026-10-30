@@ -1,19 +1,35 @@
 // GET /api/host/me — 호스트 + 공간 요약 / PUT 프로필·비밀번호
 import { api, requireHost, hashPassword, verifyPassword } from '../../../lib/auth.js';
 import { all, one, run, getSettings } from '../../../lib/db.js';
-import { json, err, readBody, todayStr, normalizePhone, isValidPhone } from '../../../lib/util.js';
+import { json, err, readBody, todayStr, addDays, normalizePhone, isValidPhone } from '../../../lib/util.js';
+import { parsePattern, patternOpenCount, getVacancyMap, effStatus } from '../../../lib/availability.js';
 export const onRequestGet = api(async (context) => {
   const host = await requireHost(context);
   const { env } = context;
   const today = todayStr();
   const spaces = await all(env.DB, `SELECT s.id, s.name, s.slug, s.status, s.review_note, s.subscription_status, s.subscription_until, s.region_id, s.photos_json, s.views, r.name AS region_name,
-    (SELECT COUNT(*) FROM vacancies v WHERE v.space_id = s.id AND v.status = 'vacant' AND v.date >= ?) AS vacant_n,
     (SELECT COUNT(*) FROM deals d WHERE d.space_id = s.id AND d.status != 'ENDED') AS deal_n,
     (SELECT COUNT(*) FROM claims c WHERE c.space_id = s.id AND c.status = 'issued') AS claim_n,
-    (SELECT enabled FROM auto_rules a WHERE a.space_id = s.id) AS auto_enabled
-    FROM spaces s LEFT JOIN regions r ON r.id = s.region_id WHERE s.host_id = ? ORDER BY s.id`, [today, host.id]);
+    (SELECT enabled FROM auto_rules a WHERE a.space_id = s.id) AS auto_enabled,
+    (SELECT COUNT(*) FROM deal_schedules ds WHERE ds.space_id = s.id AND ds.enabled = 1) AS sched_n,
+    (SELECT pattern_json FROM space_automation sa WHERE sa.space_id = s.id) AS pattern_json,
+    (SELECT paused_until FROM space_automation sa WHERE sa.space_id = s.id) AS paused_until,
+    (SELECT ical_url FROM space_automation sa WHERE sa.space_id = s.id) AS ical_url
+    FROM spaces s LEFT JOIN regions r ON r.id = s.region_id WHERE s.host_id = ? ORDER BY s.id`, [host.id]);
   const settings = await getSettings(env.DB);
-  return json({ ok: true, host, spaces: spaces.map(s => ({ ...s, photo: (JSON.parse(s.photos_json || '[]')[0]) || null })), today, settings: { fee_text: settings.host_fee_text, trial_days: settings.trial_days, bank_account: settings.bank_account, amenities: settings.amenities, contact_kakao: settings.contact_kakao, contact_email: settings.contact_email } });
+  // 앞으로 2주 동안 실제로 '비어 있음'인 칸 수 (캘린더에 직접 표시 + 반복 공실)
+  const ids = spaces.map(s => s.id), until = addDays(today, 13);
+  const [slots, vacMap] = ids.length ? await Promise.all([
+    all(env.DB, `SELECT id, space_id FROM slots WHERE active = 1 AND space_id IN (${ids.map(() => '?').join(',')})`, ids),
+    getVacancyMap(env.DB, ids, today, until),
+  ]) : [[], new Map()];
+  const vacantN = new Map();
+  for (const s of spaces) {
+    const pattern = parsePattern(s.pattern_json); let n = 0;
+    for (const sl of slots) { if (sl.space_id !== s.id) continue; for (let d = today; d <= until; d = addDays(d, 1)) if (effStatus(vacMap, pattern, s.id, sl.id, d).status === 'vacant') n++; }
+    vacantN.set(s.id, n);
+  }
+  return json({ ok: true, host, spaces: spaces.map(s => ({ ...s, vacant_n: vacantN.get(s.id) || 0, photo: (JSON.parse(s.photos_json || '[]')[0]) || null, open_cells: patternOpenCount(parsePattern(s.pattern_json)), has_ical: !!s.ical_url, pattern_json: undefined, ical_url: undefined })), today, settings: { holidays: settings.holidays, fee_text: settings.host_fee_text, trial_days: settings.trial_days, bank_account: settings.bank_account, amenities: settings.amenities, contact_kakao: settings.contact_kakao, contact_email: settings.contact_email } });
 });
 export const onRequestPut = api(async (context) => {
   const host = await requireHost(context);
