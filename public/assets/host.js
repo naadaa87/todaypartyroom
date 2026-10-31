@@ -32,7 +32,7 @@
     if (name === 'signup') return renderAuth('signup');
     if (name === 'new') return renderNew();
     if (name === 'account') return renderAccount();
-    if (name === 'space' && id) return renderSpace(Number(id), tab || 'info');
+    if (name === 'space' && id) return renderSpace(Number(id), tab || '');
     return renderHome();
   }
   window.addEventListener('hashchange', route);
@@ -64,20 +64,98 @@
     const sp = S.spaces;
     const live = sp.filter(s => s.status === 'approved').length;
     const sumV = sp.reduce((a, s) => a + (s.vacant_n || 0), 0), sumD = sp.reduce((a, s) => a + (s.deal_n || 0), 0), sumC = sp.reduce((a, s) => a + (s.claim_n || 0), 0);
-    shell(`<div class="c-title"><h1>내 공간</h1><span class="sub">${sp.length}개</span><div class="right"><a class="btn btn-p" href="#new">+ 공간 등록</a></div></div>
-    <div class="kpis"><div class="kpi"><b>${live}</b><span>공개 중인 공간</span></div><div class="kpi pt"><b>${sumV}</b><span>앞으로 2주 공실 칸</span></div><div class="kpi"><b>${sumD}</b><span>진행·예정 딜</span></div><div class="kpi"><b>${sumC}</b><span>대기 중 딜 코드</span></div></div>
-    ${sp.length ? `<div class="sp-list">${sp.map(s => `<div class="sp-item" data-go="#space/${s.id}"><img src="${h(s.photo || '/assets/placeholder.svg')}" alt=""><div class="t"><b>${h(s.name)}</b><span>${h(s.region_name || '지역 미설정')} · 2주 공실 ${s.vacant_n}칸 · 딜 ${s.deal_n} · 코드 ${s.claim_n}</span><span class="auto-line">${s.paused_until && s.paused_until >= today() ? `<em class="warn">${h(s.paused_until)}까지 일시정지</em>` : ''}<em class="${s.auto_enabled ? 'on' : ''}">자동 할인 ${s.auto_enabled ? '켜짐' : '꺼짐'}</em><em class="${s.open_cells ? 'on' : ''}">반복 공실 ${s.open_cells ? `주 ${s.open_cells}칸` : '없음'}</em><em class="${s.sched_n ? 'on' : ''}">반복 딜 ${s.sched_n || 0}개</em>${s.has_ical ? '<em class="on">캘린더 연동</em>' : ''}${!s.auto_enabled && !s.open_cells && !s.sched_n ? `<a href="#space/${s.id}/auto" class="link">자동 운영 설정하기 ›</a>` : ''}</span>${s.review_note && ['revision', 'rejected'].includes(s.status) ? `<span style="color:var(--hot)">검수 메모: ${h(s.review_note)}</span>` : ''}</div><div class="st">${pill(STATUS, s.status)}${pill(SUB, s.subscription_status)}${s.subscription_until ? `<span>~${h(s.subscription_until)}</span>` : ''}</div></div>`).join('')}</div>`
-      : `<div class="panel"><h2>첫 공간을 등록해 보세요</h2><p>사진 5장과 요금표만 있으면 10분이면 됩니다. 검수 후 공개되고, ${CFG.trialDays ? `${CFG.trialDays}일 무료 체험이 시작됩니다.` : '구독 결제 후 딜을 만들 수 있습니다.'}</p><a class="btn btn-p btn-lg" href="#new">공간 등록 시작</a></div>`}
-    <div class="panel"><h2>빠른 안내</h2><ul class="checks"><li><b>자동 운영</b> → 매주 비는 시간(반복 공실)과 할인율을 한 번만 정해 두면, 전날·당일 할인이 매일 알아서 열립니다. 예약이 들어온 칸만 캘린더에서 '예약됨'으로 바꾸세요.</li><li><b>반복 딜</b> → "평일 오후 2시 타임딜"처럼 정기 특가를 예약해 두면 정해진 시각에 자동으로 열립니다.</li><li><b>딜 전용 링크</b> → 네이버 예약에 "오늘의파티룸 특가" 상품을 만들고 링크를 넣으면 손님이 할인 상품으로 바로 들어옵니다.</li><li><b>딜 코드</b> → 전화·카카오로 예약하는 손님이 코드를 말하면 "코드" 탭에서 사용 처리하세요.</li></ul></div>`, '내 공간');
+    const todo = [];
+    if (sumC) todo.push(`<a class="todo hot" href="#space/${(sp.find(s => s.claim_n) || {}).id}/claims"><b>딜 코드 ${sumC}건</b><span>손님이 받은 코드가 사용 처리를 기다리고 있어요</span></a>`);
+    for (const s of sp) {
+      if (['draft', 'revision', 'rejected'].includes(s.status)) todo.push(`<a class="todo" href="#space/${s.id}"><b>${h(s.name)}</b><span>${s.status === 'draft' ? '등록을 마치고 검수를 요청하세요' : '검수 메모를 확인하고 다시 제출하세요'}</span></a>`);
+      else if (s.status === 'approved' && !s.open_cells && !s.has_ical) todo.push(`<a class="todo" href="#space/${s.id}/pattern"><b>${h(s.name)}</b><span>매주 비는 시간을 정해 두면 할인이 매일 알아서 열려요</span></a>`);
+      else if (s.status === 'approved' && !s.auto_enabled) todo.push(`<a class="todo" href="#space/${s.id}/autorule"><b>${h(s.name)}</b><span>자동 할인이 꺼져 있어요. 추천값 버튼으로 바로 켤 수 있어요</span></a>`);
+      if (s.subscription_until && s.subscription_until >= today() && s.subscription_until <= addDays(today(), 7) && ['trial', 'active'].includes(s.subscription_status)) todo.push(`<a class="todo" href="#space/${s.id}/subscription"><b>${h(s.name)}</b><span>${h(s.subscription_until)}에 ${s.subscription_status === 'trial' ? '무료 체험' : '구독'}이 끝나요</span></a>`);
+    }
+    shell(`${adminBanner()}<div class="c-title"><h1>내 공간</h1><span class="sub">${sp.length}개 · 공개 ${live}</span><div class="right"><a class="btn btn-p" href="#new">+ 공간 등록</a></div></div>
+    <div class="kpis"><div class="kpi pt"><b>${sumV}</b><span>앞으로 2주 공실 칸</span></div><div class="kpi"><b>${sumD}</b><span>진행·예정 딜</span></div><div class="kpi"><b>${sumC}</b><span>대기 중 딜 코드</span></div><div class="kpi"><b>${live}</b><span>공개 중인 공간</span></div></div>
+    ${todo.length ? `<div class="panel"><h2>오늘 할 일 <span class="mini">${todo.length}</span></h2><div class="todos">${todo.slice(0, 8).join('')}</div></div>` : ''}
+    ${live ? '<div class="panel" data-board><h2>오늘·내일 한눈에 <span class="mini">칸을 누르면 비어 있음 → 예약됨 → 휴무 순으로 바뀌어요</span></h2><p class="muted">불러오는 중…</p></div>' : ''}
+    ${sp.length ? `<div class="panel"><h2>공간 목록</h2><div class="sp-list">${sp.map(s => `<div class="sp-item" data-go="#space/${s.id}"><img src="${h((s.photo || '').replace('#keep', '') || '/assets/placeholder.svg')}" alt="" onerror="this.src='/assets/placeholder.svg'"><div class="t"><b>${h(s.name)}</b><span>${h(s.region_name || '지역 미설정')} · 2주 공실 ${s.vacant_n}칸 · 딜 ${s.deal_n} · 코드 ${s.claim_n}</span><span class="auto-line">${s.paused_until && s.paused_until >= today() ? `<em class="warn">${h(s.paused_until)}까지 일시정지</em>` : ''}<em class="${s.auto_enabled ? 'on' : ''}">자동 할인 ${s.auto_enabled ? '켜짐' : '꺼짐'}</em><em class="${s.open_cells ? 'on' : ''}">반복 공실 ${s.open_cells ? `주 ${s.open_cells}칸` : '없음'}</em><em class="${s.sched_n ? 'on' : ''}">반복 딜 ${s.sched_n || 0}개</em>${s.has_ical ? '<em class="on">캘린더 연동</em>' : ''}</span>${s.review_note && ['revision', 'rejected'].includes(s.status) ? `<span style="color:var(--hot)">검수 메모: ${h(s.review_note)}</span>` : ''}</div><div class="st">${pill(STATUS, s.status)}${pill(SUB, s.subscription_status)}${s.subscription_until ? `<span>~${h(s.subscription_until)}</span>` : ''}</div></div>`).join('')}</div></div>`
+      : `<div class="panel"><h2>첫 공간을 등록해 보세요</h2><p>사진 몇 장과 요금표만 있으면 10분이면 됩니다. 검수 후 공개되고, ${CFG.trialDays ? `${CFG.trialDays}일 무료 체험이 시작됩니다.` : '구독 결제 후 딜을 만들 수 있습니다.'}</p><a class="btn btn-p btn-lg" href="#new">공간 등록 시작</a></div>`}
+    <div class="panel"><h2>이렇게 쓰면 편해요</h2><ol class="howto"><li><b>매주 비는 시간을 한 번만 정하세요.</b> 공간 → 공실·할인 → 반복 공실. 그 칸은 전날·당일이 되면 자동 할인으로 노출돼요.</li><li><b>예약이 들어오면 '예약됨'만 누르세요.</b> 이 화면의 오늘·내일 표나 공간의 '오늘' 화면에서 한 번 누르면 할인이 바로 내려가요.</li><li><b>정기 특가는 반복 딜로 걸어 두세요.</b> "평일 오후 2시 타임딜"처럼 정해 두면 매주 그 시각에 열려요.</li><li><b>딜 코드는 '사용 처리'만.</b> 전화·카카오로 예약한 손님이 코드를 말하면 성과·구독 → 딜 코드에서 눌러 주세요.</li></ol></div>`, '내 공간');
+    if (live) renderBoard();
+  }
+  function adminBanner() { return S.host && S.host.via === 'admin' ? `<div class="admin-banner">관리자 화면에서 연 <b>${h(S.host.name)}</b> 호스트센터입니다. 바꾼 내용은 이 호스트의 공간에 바로 반영돼요.</div>` : ''; }
+
+  /* ---- 홈: 오늘·내일 한눈에 ---- */
+  async function renderBoard() {
+    const el = $('[data-board]'); if (!el) return;
+    let r; try { r = await api('/api/host/board'); } catch (e) { el.innerHTML = `<h2>오늘·내일 한눈에</h2><p class="muted">${h(e.message)}</p>`; return; }
+    S.board = r.spaces;
+    const live = r.spaces.filter(x => x.live || x.status === 'approved');
+    if (!live.length) { el.remove(); return; }
+    const dts = live[0].dates;
+    el.innerHTML = `<h2>오늘·내일 한눈에 <span class="mini">칸을 누르면 비어 있음 → 예약됨 → 휴무 순으로 바뀌어요 · 회색 '반복'은 매주 기본값</span></h2>
+      <div class="board">${live.map(sp => `<div class="bd-sp"><div class="bd-h"><a href="#space/${sp.id}/today"><b>${h(sp.name)}</b></a>${sp.paused_until && sp.paused_until >= today() ? '<span class="pill warn">일시정지</span>' : ''}${sp.rule && sp.rule.enabled ? '' : '<a class="pill" href="#space/' + sp.id + '/autorule">자동 할인 꺼짐</a>'}</div>
+        <table class="bd-tbl"><thead><tr><th></th>${dts.map(d => `<th>${d.today ? '오늘' : '내일'} <small>${d.date.slice(5).replace('-', '/')}(${d.dow})</small></th>`).join('')}</tr></thead><tbody>
+        ${sp.grid.map(row => `<tr><td class="lbl">${h(row.slot.name)}<small>${h(row.slot.start)}~${h(row.slot.end)}</small></td>${row.cells.map(c => `<td>${boardCell(sp, row.slot, c)}</td>`).join('')}</tr>`).join('')}
+        </tbody></table></div>`).join('')}</div>`;
+  }
+  function shownLine(c) {
+    const shown = (c.items || []).find(i => i.shown);
+    if ((c.notes || []).includes('마감됨')) return '오늘 마감';
+    if (!shown) return c.status === 'vacant' ? (c.notes.length ? c.notes.join(' · ') : '할인 없음') : '';
+    if (shown.type === 'PLAN') return '할인 예정';
+    return `${TYPE[shown.type]} ${won(shown.price)}${shown.scheduled ? ' (예정)' : ''}`;
+  }
+  function boardCell(sp, slot, c) {
+    const past = (c.notes || []).includes('마감됨');
+    return `<button type="button" class="bd-cell ${c.status || 'none'} ${past ? 'past' : ''}" data-bd data-space="${sp.id}" data-slot="${slot.id}" data-date="${c.date}" data-st="${c.status || ''}"><span class="st">${ST_LABEL[c.status || '']}${c.source === 'pattern' ? '<i>반복</i>' : c.source === 'ical' ? '<i>연동</i>' : ''}</span><small>${h(shownLine(c))}</small></button>`;
+  }
+  async function cycleCell(btn, spaceId, slotId, date, pattern, afterFn) {
+    const def = ((pattern || {})[slotId] || [])[dow(date)] || '';
+    const cur = btn.dataset.st || '';
+    const order = def ? ['vacant', 'booked', 'closed'] : ['', 'vacant', 'booked', 'closed'];
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    btn.disabled = true;
+    try {
+      await api(`/api/host/spaces/${spaceId}/vacancies`, { method: 'PUT', body: { items: [{ slot_id: Number(slotId), date, status: next === def ? 'clear' : (next || 'clear') }] } });
+      if (next === 'booked') toast('예약됨으로 바꿨어요. 이 칸의 할인은 바로 내려갑니다.');
+      else if (next === 'vacant') toast('비어 있음으로 바꿨어요. 할인 조건에 맞으면 곧 노출돼요.');
+      if (afterFn) await afterFn();
+    } catch (e) { toast(e.message); btn.disabled = false; }
   }
 
   /* ---------- 공간 생성 ---------- */
   function renderNew() {
-    shell(`<div class="c-title"><h1>새 공간 등록</h1></div><div class="panel"><form class="form" data-form="new"><label>공간 이름<input name="name" required maxlength="60" placeholder="예: 홍대 루프탑 파티룸"></label><label>한 줄 소개<input name="intro" maxlength="120" placeholder="예: 10명까지 편한 루프탑, 노래방·빔 완비"></label><p class="hint">이름은 공개 URL에 쓰입니다. 나머지 정보는 다음 화면에서 채웁니다.</p><p class="msg"></p><div class="actions"><button class="btn btn-p" type="submit">만들고 계속</button><a class="btn btn-o" href="#home">취소</a></div></form></div>`, '새 공간');
+    shell(`<div class="c-title"><h1>새 공간 등록</h1></div><div class="panel"><form class="form" data-form="new"><label>공간 이름<input name="name" required maxlength="60" placeholder="예: 홍대 루프탑 파티룸"></label><label>한 줄 소개<input name="intro" maxlength="120" placeholder="예: 10명까지 편한 루프탑, 노래방·빔 완비"></label><p class="hint">나머지 정보는 다음 화면에서 순서대로 채우면 됩니다. 기본정보 → 사진 → 요금 → 예약채널 → 검수 요청, 5단계예요.</p><p class="msg"></p><div class="actions"><button class="btn btn-p" type="submit">만들고 계속</button><a class="btn btn-o" href="#home">취소</a></div></form></div>`, '새 공간');
   }
 
   /* ---------- 공간 편집 ---------- */
-  const TABS = [['info', '기본정보'], ['photos', '사진'], ['slots', '요금'], ['channel', '예약채널'], ['review', '검수·공개'], ['auto', '★ 자동 운영'], ['pattern', '반복 공실'], ['autorule', '자동 할인'], ['schedules', '반복 딜'], ['calendar', '공실 캘린더'], ['deals', '딜'], ['claims', '딜 코드'], ['stats', '통계'], ['subscription', '구독']];
+  const GROUPS = [
+    { k: 'today', label: '오늘', tabs: [['today', '오늘']] },
+    { k: 'sell', label: '공실·할인', tabs: [['auto', '자동 운영'], ['pattern', '반복 공실'], ['autorule', '자동 할인'], ['schedules', '반복 딜'], ['calendar', '공실 캘린더'], ['deals', '직접 딜']] },
+    { k: 'info', label: '공간 정보', tabs: [['info', '기본정보'], ['photos', '사진'], ['slots', '요금'], ['channel', '예약채널'], ['review', '검수·공개']] },
+    { k: 'result', label: '성과·구독', tabs: [['claims', '딜 코드'], ['stats', '통계'], ['subscription', '구독']] },
+  ];
+  const groupOf = tab => GROUPS.find(g => g.tabs.some(([k]) => k === tab)) || GROUPS[2];
+  const STEPS = [['info', '기본정보'], ['photos', '사진'], ['slots', '요금'], ['channel', '예약채널'], ['review', '검수 요청']];
+  function stepState(s) {
+    const is = S.issues || [];
+    const has = re => is.some(x => re.test(x));
+    return {
+      info: !has(/이름|지역|주소|한 줄|공간 소개/), photos: !has(/사진/), slots: !has(/슬롯|요금/), channel: !has(/예약 채널/),
+      review: ['pending', 'approved', 'hidden'].includes(s.status),
+    };
+  }
+  function firstTab(s) {
+    if (['approved', 'hidden'].includes(s.status)) return 'today';
+    const st = stepState(s);
+    const t = STEPS.find(([k]) => !st[k]);
+    return t ? t[0] : 'review';
+  }
+  function stepper(s, tab) {
+    if (['approved', 'hidden'].includes(s.status)) return '';
+    const st = stepState(s);
+    const n = STEPS.filter(([k]) => st[k]).length;
+    return `<div class="stepper"><div class="sp-head"><b>${s.status === 'pending' ? '검수 중이에요. 보통 하루 안에 결과를 알려드려요.' : `공개까지 ${STEPS.length - n}단계 남았어요`}</b><span class="mini">${n}/${STEPS.length}</span></div><ol>${STEPS.map(([k, l], i) => `<li class="${st[k] ? 'done' : ''} ${k === tab ? 'cur' : ''}"><a href="#space/${s.id}/${k}"><i>${st[k] ? '✓' : i + 1}</i>${l}</a></li>`).join('')}</ol></div>`;
+  }
   async function loadSpace(id) { const r = await api(`/api/host/spaces/${id}`); S.space = r.space; S.issues = r.issues; }
   async function loadMeta() {
     if (!S.regions) S.regions = (await api('/api/regions')).tree;
@@ -85,18 +163,55 @@
   }
   async function renderSpace(id, tab) {
     if (tab !== 'schedules' || (S.space && S.space.id !== id)) S.schedEdit = null;
-    S.tab = tab;
     try { await loadSpace(id); } catch (e) { toast(e.message); location.hash = 'home'; return; }
     await loadMeta();
     const s = S.space;
-    const head = `<div class="c-title"><a href="#home" class="btn btn-o" style="height:34px;padding:0 10px">‹ 목록</a><h1>${h(s.name)}</h1>${pill(STATUS, s.status)}${pill(SUB, s.subscription_status)}<div class="right">${s.status === 'approved' ? `<a class="btn btn-o" href="/space/${h(s.slug)}" target="_blank">공개 페이지</a>` : `<a class="btn btn-o" href="/space/${h(s.slug)}" target="_blank">미리보기</a>`}</div></div>
-    <nav class="c-tabs">${TABS.map(([k, l]) => `<a href="#space/${s.id}/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</nav>`;
-    const body = await ({ info: tabInfo, photos: tabPhotos, slots: tabSlots, channel: tabChannel, review: tabReview, auto: tabAuto, pattern: tabPattern, schedules: tabSchedules, calendar: tabCalendar, autorule: tabAutorule, deals: tabDeals, claims: tabClaims, stats: tabStats, subscription: tabSubscription }[tab] || tabInfo)(s);
-    shell(head + body, s.name);
+    if (!tab) tab = firstTab(s);
+    S.tab = tab;
+    const g = groupOf(tab);
+    const me = (S.spaces || []).find(x => x.id === s.id) || {};
+    const badge = k => k === 'result' && me.claim_n ? `<em>${me.claim_n}</em>` : k === 'info' && (S.issues || []).length && !['approved', 'hidden'].includes(s.status) ? `<em>${S.issues.length}</em>` : '';
+    const others = (S.spaces || []).filter(x => x.id !== s.id);
+    const head = `${adminBanner()}<div class="c-title"><a href="#home" class="btn btn-o back">‹ 목록</a><h1>${h(s.name)}</h1>${pill(STATUS, s.status)}${pill(SUB, s.subscription_status)}<div class="right">${others.length ? `<select class="sp-switch" data-sp-switch aria-label="다른 공간으로 이동"><option value="">다른 공간 ▾</option>${others.map(x => `<option value="${x.id}">${h(x.name)}</option>`).join('')}</select>` : ''}<a class="btn btn-o" href="/space/${h(s.slug)}" target="_blank">${s.status === 'approved' ? '공개 페이지' : '미리보기'}</a></div></div>
+    <nav class="c-groups">${GROUPS.map(x => `<a href="#space/${s.id}/${x.k === g.k ? tab : (S.lastTab?.[x.k] || x.tabs[0][0])}" class="${x.k === g.k ? 'on' : ''}">${x.label}${badge(x.k)}</a>`).join('')}</nav>
+    ${g.tabs.length > 1 ? `<nav class="c-tabs">${g.tabs.map(([k, l]) => `<a href="#space/${s.id}/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</nav>` : ''}`;
+    S.lastTab = { ...(S.lastTab || {}), [g.k]: tab };
+    const body = await ({ today: tabToday, info: tabInfo, photos: tabPhotos, slots: tabSlots, channel: tabChannel, review: tabReview, auto: tabAuto, pattern: tabPattern, schedules: tabSchedules, calendar: tabCalendar, autorule: tabAutorule, deals: tabDeals, claims: tabClaims, stats: tabStats, subscription: tabSubscription }[tab] || tabInfo)(s);
+    shell(head + (g.k === 'info' || tab === 'today' ? stepper(s, tab) : '') + body, s.name);
     if (tab === 'calendar') bindCalendar(s);
     if (tab === 'deals') bindDeals(s);
     if (tab === 'schedules') bindSchedules(s);
     if (tab === 'pattern') patSummary();
+  }
+
+  /* ---- 오늘 ---- */
+  async function tabToday(s) {
+    await ensureSpaces();
+    if (!['approved', 'hidden'].includes(s.status)) return `<div class="panel"><h2>공개되면 이 화면에서 매일 관리해요</h2><p>오늘·내일 칸마다 비어 있음/예약됨을 한 번에 바꾸고, 손님에게 지금 어떤 가격이 보이는지 바로 확인하는 화면이에요. 위 단계를 마치고 검수를 요청해 주세요.</p></div>`;
+    const r = await api(`/api/host/spaces/${s.id}/automation`);
+    S.todayAuto = r;
+    const a = r.automation, pv = r.preview, me = (S.spaces || []).find(x => x.id === s.id) || {};
+    const alerts = [];
+    if (!r.live) alerts.push(`<a class="todo hot" href="#space/${s.id}/subscription"><b>손님에게 보이지 않아요</b><span>${s.status === 'hidden' ? '비공개 상태예요. 검수·공개에서 다시 공개할 수 있어요' : '구독(체험 포함)이 활성화되면 노출돼요'}</span></a>`);
+    if (me.claim_n) alerts.push(`<a class="todo hot" href="#space/${s.id}/claims"><b>딜 코드 ${me.claim_n}건</b><span>예약을 확인하고 사용 처리해 주세요</span></a>`);
+    if (a.paused_until && a.paused_until >= today()) alerts.push(`<a class="todo" href="#space/${s.id}/auto"><b>${h(a.paused_until)}까지 일시정지</b><span>자동 할인과 반복 딜이 멈춰 있어요</span></a>`);
+    if (!a.open_cells && !a.ical_url) alerts.push(`<a class="todo" href="#space/${s.id}/pattern"><b>반복 공실을 정해 주세요</b><span>매주 비는 칸을 한 번만 열어 두면 매일 누르지 않아도 돼요</span></a>`);
+    if (!(r.rule && r.rule.enabled)) alerts.push(`<a class="todo" href="#space/${s.id}/autorule"><b>자동 할인이 꺼져 있어요</b><span>추천값 버튼 하나로 켤 수 있어요</span></a>`);
+    const day = (d, i) => `<div class="panel td-day"><h2>${i === 0 ? '오늘' : '내일'} <span class="mini">${d.date.slice(5).replace('-', '/')}(${d.dow}) · ${{ wk: '평일', fri: '금요일', sat: (S.settings?.holidays || []).includes(d.date) ? '공휴일' : '토요일', sun: '일요일' }[dayKind(d.date)]} 요금</span></h2>
+      ${pv.grid.map(row => {
+        const c = row.cells[i]; const sl = s.slots.find(x => x.id === row.slot.id) || {};
+        const past = c.notes.includes('마감됨');
+        const shown = (c.items || []).find(x => x.shown);
+        const def = ((a.pattern || {})[row.slot.id] || [])[dow(d.date)] || '';
+        const seg = ['vacant', 'booked', 'closed'].map(v => `<button type="button" class="${c.status === v ? 'on' : ''} ${v}" data-td="${v}" data-slot="${row.slot.id}" data-date="${d.date}" data-def="${def}">${ST_LABEL[v]}</button>`).join('');
+        const line = shown ? (shown.type === 'PLAN' ? `<span class="pv-plan">자동 할인 예정</span> ${h(shown.plan)}` : `<span class="badge b-${shown.type.toLowerCase()}">${TYPE[shown.type]}</span> <b>${won(shown.price)}</b> <s>${won(shown.base)}</s>${shown.scheduled ? ` · ${h((shown.startsAt || '').slice(11, 16))} 오픈 예정` : ' · 손님에게 노출 중'}`)
+          : past ? '<span class="muted">시작 시각이 지나 할인 노출이 끝났어요</span>' : c.status === 'vacant' ? `<span class="muted">${c.notes.length ? h(c.notes.join(' · ')) : '노출 중인 할인이 없어요'}</span>` : c.status === 'booked' ? '<span class="muted">예약됨 · 할인 노출 안 함</span>' : c.status === 'closed' ? '<span class="muted">휴무</span>' : '<span class="muted">미정 · 비어 있으면 눌러 주세요</span>';
+        const canFlash = i === 0 && c.status === 'vacant' && r.live && !(shown && shown.type === 'FLASH') && !past;
+        return `<div class="td-row ${past ? 'past' : ''}"><div class="td-slot">${past ? '<small class="tag">오늘 판매 마감</small>' : ''}<b>${h(row.slot.name)}</b><span>${h(row.slot.start)}~${h(row.slot.end)} · 정가 ${won(basePrice(sl, d.date))}</span>${c.source && c.source !== 'manual' ? `<small class="tag">${c.source === 'pattern' ? '반복 공실' : '캘린더 연동'}</small>` : ''}</div><div class="seg">${seg}</div><div class="td-line">${line}${canFlash ? `<button type="button" class="btn btn-o mini-btn" data-flash="${row.slot.id}">반짝딜 2시간 30%</button>` : ''}</div></div>`;
+      }).join('') || '<p class="muted">요금(슬롯)을 먼저 등록하세요.</p>'}</div>`;
+    return `${alerts.length ? `<div class="todos">${alerts.join('')}</div>` : ''}
+      <div class="td-grid">${pv.dates.slice(0, 2).map(day).join('')}</div>
+      <div class="panel"><h2>바로가기</h2><div class="quick"><a href="#space/${s.id}/auto"><b>7일 미리보기</b><span>앞으로 손님에게 보일 가격</span></a><a href="#space/${s.id}/calendar"><b>2주 캘린더</b><span>날짜별 공실 한꺼번에</span></a><a href="#space/${s.id}/schedules"><b>반복 딜</b><span>정기 특가 예약</span></a><a href="#space/${s.id}/deals"><b>직접 딜 만들기</b><span>타임딜·핫딜·이벤트</span></a></div></div>`;
   }
 
   function regionSelects(cur) {
@@ -121,18 +236,28 @@
       <p class="msg"></p><div class="actions"><button class="btn btn-p" type="submit">저장</button><a class="btn btn-o" href="#space/${s.id}/photos">다음: 사진 ›</a></div></form></div>`;
   }
   function tabPhotos(s) {
+    const ext = s.photos.filter(p => /^https?:\/\//.test(p) && !p.endsWith('#keep')).length;
     return `<div class="panel"><h2>사진 <span class="mini">${s.photos.length}장 · 최소 3장, 권장 10장 · 가로 사진 · 첫 장이 대표</span></h2>
-      <div class="photo-grid" data-photos>${s.photos.map((p, i) => `<div class="photo">${i === 0 ? '<span class="first">대표</span>' : ''}<img src="${h(p)}" alt=""><div class="ops"><button type="button" data-ph="up" data-i="${i}">◀</button><button type="button" data-ph="down" data-i="${i}">▶</button><button type="button" data-ph="del" data-i="${i}">삭제</button></div></div>`).join('')}</div>
-      <h3>사진 올리기</h3><form class="form" data-form="upload"><div class="row"><label>파일 선택 (jpg·png·webp, 8MB 이하, 여러 장 가능)<input type="file" name="files" accept="image/*" multiple style="height:auto;padding:8px"></label><label>또는 이미지 URL 붙여넣기<input name="url" placeholder="https://..."></label></div><p class="hint">파일 업로드는 Cloudflare R2 저장소(IMAGES 바인딩)가 연결된 경우 동작합니다. 연결 전에는 URL 방식을 쓰세요.</p><p class="msg"></p><div class="actions"><button class="btn btn-p" type="submit">추가</button><a class="btn btn-o" href="#space/${s.id}/slots">다음: 요금 ›</a></div></form></div>`;
+      ${ext ? `<div class="tip">다른 사이트 링크로 걸린 사진이 ${ext}장 있어요. 원래 사이트에서 사진을 지우면 여기서도 안 보이니, 내 저장소로 옮겨 두는 걸 권해요. <button type="button" class="btn btn-o mini-btn" data-act="photo-import">내 저장소로 옮기기</button></div>` : ''}
+      <div class="photo-grid" data-photos>${s.photos.map((p, i) => `<div class="photo">${i === 0 ? '<span class="first">대표</span>' : ''}<img src="${h(p.replace('#keep', ''))}" alt="" loading="lazy" onerror="this.closest('.photo').classList.add('broken')"><div class="ops"><button type="button" data-ph="up" data-i="${i}">◀</button><button type="button" data-ph="down" data-i="${i}">▶</button><button type="button" data-ph="del" data-i="${i}">삭제</button></div></div>`).join('')}</div>
+      <h3>사진 올리기</h3><form class="form" data-form="upload"><div class="row"><label>파일 선택 (jpg·png·webp, 8MB 이하, 여러 장 가능)<input type="file" name="files" accept="image/*" multiple style="height:auto;padding:8px"></label><label>또는 이미지 URL 붙여넣기<input name="url" placeholder="https://..."></label></div><p class="hint">파일 업로드는 Cloudflare R2 저장소(IMAGES 바인딩)가 연결된 경우 동작합니다. 연결 전에는 URL 방식을 쓰세요.</p><p class="msg"></p><div class="actions"><button class="btn btn-p" type="submit">추가</button>${['approved', 'hidden'].includes(s.status) ? '' : `<a class="btn btn-o" href="#space/${s.id}/slots">다음: 요금 ›</a>`}</div></form></div>`;
   }
   function slotRow(sl = {}, i = 0) {
-    return `<tr data-slot-row><td><input type="hidden" name="id" value="${sl.id || ''}"><input name="name" value="${h(sl.name || '')}" placeholder="낮타임" class="w-m"></td><td><select name="kind"><option value="package" ${sl.kind !== 'hourly' ? 'selected' : ''}>패키지</option><option value="hourly" ${sl.kind === 'hourly' ? 'selected' : ''}>시간제</option></select></td><td><input name="start_time" value="${h(sl.start_time || '12:00')}" class="w-s" placeholder="12:00"></td><td><input name="end_time" value="${h(sl.end_time || '17:00')}" class="w-s" placeholder="17:00"></td><td><input name="price_weekday" type="number" step="1000" value="${sl.price_weekday || ''}" class="w-m"></td><td><input name="price_weekend" type="number" step="1000" value="${sl.price_weekend || ''}" class="w-m"></td><td><input name="base_people" type="number" value="${sl.base_people || 4}" class="w-s"></td><td><input name="extra_fee" type="number" step="1000" value="${sl.extra_fee || 0}" class="w-m"></td><td><button type="button" class="btn btn-o" style="height:32px;padding:0 8px" data-slot="del">삭제</button></td></tr>`;
+    return `<tr data-slot-row><td><input type="hidden" name="id" value="${sl.id || ''}"><input name="name" value="${h(sl.name || '')}" placeholder="낮타임" class="w-m"></td><td><select name="kind"><option value="package" ${sl.kind !== 'hourly' ? 'selected' : ''}>패키지</option><option value="hourly" ${sl.kind === 'hourly' ? 'selected' : ''}>시간제</option></select></td><td><input name="start_time" type="time" value="${h(sl.start_time || '12:00')}" class="w-s"></td><td><input name="end_time" type="time" value="${h(sl.end_time || '17:00')}" class="w-s"></td><td><input name="price_weekday" type="number" step="1000" min="0" value="${sl.price_weekday || ''}" class="w-m" placeholder="80000"></td><td class="dp"><input name="price_fri" type="number" step="1000" min="0" value="${sl.price_fri || ''}" class="w-m" placeholder="같음"></td><td><input name="price_weekend" type="number" step="1000" min="0" value="${sl.price_weekend || ''}" class="w-m" placeholder="100000"></td><td class="dp"><input name="price_sun" type="number" step="1000" min="0" value="${sl.price_sun || ''}" class="w-m" placeholder="같음"></td><td><input name="base_people" type="number" min="1" value="${sl.base_people || 4}" class="w-s"></td><td><input name="extra_fee" type="number" step="1000" min="0" value="${sl.extra_fee || 0}" class="w-m"></td><td><button type="button" class="btn btn-o" style="height:32px;padding:0 8px" data-slot="del">삭제</button></td></tr>`;
   }
+  const SLOT_TPL = {
+    std: [{ name: '낮타임', start_time: '12:00', end_time: '17:00', base_people: 4 }, { name: '밤타임', start_time: '19:00', end_time: '10:00', base_people: 4 }, { name: '올데이', start_time: '12:00', end_time: '22:00', base_people: 4 }],
+    two: [{ name: '낮타임', start_time: '12:00', end_time: '17:00', base_people: 4 }, { name: '밤타임', start_time: '19:00', end_time: '10:00', base_people: 4 }],
+    hourly: [{ name: '시간제', kind: 'hourly', start_time: '10:00', end_time: '23:00', base_people: 4 }],
+  };
   function tabSlots(s) {
-    return `<div class="panel"><h2>이용 시간 · 요금 <span class="mini">정가 기준. 할인율은 이 정가 대비로 계산됩니다</span></h2>
-      <form class="form" data-form="slots"><div style="overflow-x:auto"><table class="slot-tbl"><thead><tr><th>이름</th><th>유형</th><th>시작</th><th>종료</th><th>평일(원)</th><th>주말·공휴일(원)</th><th>기준인원</th><th>인원추가(원/인)</th><th></th></tr></thead><tbody data-slot-body>${(s.slots.length ? s.slots : [{ name: '낮타임', start_time: '12:00', end_time: '17:00', base_people: 4 }, { name: '밤타임', start_time: '19:00', end_time: '10:00', base_people: 4 }]).map(slotRow).join('')}</tbody></table></div>
-      <p class="hint">종료가 시작보다 이르면 다음 날 아침으로 계산됩니다(밤타임 19:00~10:00). 시간제는 시작·종료를 운영 시간, 요금을 시간당 요금으로 입력하세요.</p>
-      <p class="msg"></p><div class="actions"><button type="button" class="btn btn-o" data-slot="add">+ 슬롯 추가</button><button class="btn btn-p" type="submit">저장</button><a class="btn btn-o" href="#space/${s.id}/channel">다음: 예약채널 ›</a></div></form></div>`;
+    const dayPriced = s.slots.some(sl => sl.price_fri || sl.price_sun);
+    return `<div class="panel"><h2>이용 시간 · 요금 <span class="mini">정가 기준. 모든 할인은 이 정가에서 계산돼요</span></h2>
+      ${s.slots.length ? '' : `<div class="actions" style="margin-bottom:10px"><span class="mini">자주 쓰는 구성으로 채우기</span><button type="button" class="btn btn-o" data-slot-tpl="std">낮·밤·올데이</button><button type="button" class="btn btn-o" data-slot-tpl="two">낮·밤</button><button type="button" class="btn btn-o" data-slot-tpl="hourly">시간제</button></div>`}
+      <label class="inline dp-toggle"><input type="checkbox" data-dp-toggle ${dayPriced ? 'checked' : ''}> 금요일·일요일 요금이 따로 있어요</label>
+      <form class="form" data-form="slots"><div style="overflow-x:auto"><table class="slot-tbl ${dayPriced ? 'show-dp' : ''}" data-slot-tbl><thead><tr><th>이름</th><th>유형</th><th>시작</th><th>종료</th><th>${dayPriced ? '월~목' : '평일'}(원)</th><th class="dp">금(원)</th><th>${dayPriced ? '토·공휴일' : '주말·공휴일'}(원)</th><th class="dp">일(원)</th><th>기준인원</th><th>인원추가(원/인)</th><th></th></tr></thead><tbody data-slot-body>${(s.slots.length ? s.slots : SLOT_TPL.two).map(slotRow).join('')}</tbody></table></div>
+      <p class="hint">종료가 시작보다 이르면 다음 날 아침까지로 계산돼요(밤타임 19:00~10:00). 금·일 칸을 비워 두면 금요일은 평일, 일요일은 주말 요금을 써요. 공휴일은 토요일 요금, 공휴일 전날은 금요일 요금(일요일이면 토요일 요금)으로 계산해요. 시간제는 운영 시간과 시간당 요금을 넣어 주세요.</p>
+      <p class="msg"></p><div class="actions"><button type="button" class="btn btn-o" data-slot="add">+ 슬롯 추가</button><button class="btn btn-p" type="submit">저장</button>${['approved', 'hidden'].includes(s.status) ? '' : `<a class="btn btn-o" href="#space/${s.id}/channel">다음: 예약채널 ›</a>`}</div></form></div>`;
   }
   function tabChannel(s) {
     return `<div class="panel"><h2>예약 채널 <span class="mini">손님이 "예약하기"를 누르면 여기로 연결됩니다</span></h2><form class="form" data-form="channel">
@@ -158,7 +283,9 @@
   const ST_LABEL = { vacant: '비어있음', booked: '예약됨', closed: '휴무', '': '미정' };
   const WEEK = [1, 2, 3, 4, 5, 6, 0]; // 월요일부터
   const isRed = d => [0, 6].includes(dow(d)) || (S.settings?.holidays || []).includes(d);
-  const basePrice = (sl, d) => isRed(d) ? sl.price_weekend : sl.price_weekday;
+  // 요금 기준 요일 — 서버(lib/util.js priceDayKind)와 같은 규칙
+  const dayKind = d => { const hol = S.settings?.holidays || []; const w = dow(d); if (w === 6 || hol.includes(d)) return 'sat'; const eve = hol.includes(addDays(d, 1)); if (w === 0) return eve ? 'sat' : 'sun'; if (w === 5 || eve) return 'fri'; return 'wk'; };
+  const basePrice = (sl, d) => { const k = dayKind(d); return k === 'sat' ? sl.price_weekend : k === 'sun' ? (sl.price_sun || sl.price_weekend) : k === 'fri' ? (sl.price_fri || sl.price_weekday) : sl.price_weekday; };
   const calcPrice = (base, mode, val, floor) => { let p = mode === 'RATE' ? base * (100 - val) / 100 : mode === 'AMOUNT' ? base - val : val; p = Math.round(p / 1000) * 1000; if (floor && p < floor) p = floor; return Math.max(0, Math.min(p, base)); };
   const daysText = days => { const k = [...days].map(Number).sort().join(','); if (k === '0,1,2,3,4,5,6') return '매일'; if (k === '1,2,3,4,5') return '평일(월~금)'; if (k === '1,2,3,4') return '월~목'; if (k === '0,6') return '주말'; return WEEK.filter(d => days.map(Number).includes(d)).map(d => DOW[d]).join('·'); };
   const leadText = (lead, time) => `${Number(lead) === 0 ? '이용일 당일' : `이용일 ${lead}일 전`} ${time}`;
@@ -431,7 +558,7 @@
       const targets = $$('input[name=target]:checked', f).map(x => x.value);
       const mode = f.discount_mode.value, val = Number(f.discount_value.value || 0), floor = Number(f.floor_price.value || 0);
       const hol = []; // 공휴일은 서버 설정 기준; 미리보기는 주말만 구분
-      const lines = targets.slice(0, 6).map(v => { const [d, sid] = v.split('|'); const sl = s.slots.find(x => x.id === Number(sid)); if (!sl) return ''; const we = [0, 6].includes(dow(d)); const base = we ? sl.price_weekend : sl.price_weekday; let p = base; if (type !== 'EVENT' && val) { p = mode === 'RATE' ? base * (100 - val) / 100 : mode === 'AMOUNT' ? base - val : val; p = Math.round(p / 1000) * 1000; if (floor && p < floor) p = floor; p = Math.min(p, base); } const rate = base ? Math.round((base - p) / base * 100) : 0; return `<div>${d.slice(5).replace('-', '/')} ${h(sl.name)} · <s>${won(base)}</s> <b style="color:var(--point)">${won(p)}</b> ${rate ? `<span class="p-rate">${rate}%</span>` : ''}</div>`; }).join('');
+      const lines = targets.slice(0, 6).map(v => { const [d, sid] = v.split('|'); const sl = s.slots.find(x => x.id === Number(sid)); if (!sl) return ''; const base = basePrice(sl, d); let p = base; if (type !== 'EVENT' && val) { p = mode === 'RATE' ? base * (100 - val) / 100 : mode === 'AMOUNT' ? base - val : val; p = Math.round(p / 1000) * 1000; if (floor && p < floor) p = floor; p = Math.min(p, base); } const rate = base ? Math.round((base - p) / base * 100) : 0; return `<div>${d.slice(5).replace('-', '/')} ${h(sl.name)} · <s>${won(base)}</s> <b style="color:var(--point)">${won(p)}</b> ${rate ? `<span class="p-rate">${rate}%</span>` : ''}</div>`; }).join('');
       $('[data-preview]', f).innerHTML = targets.length ? `<b>손님에게 보이는 가격</b>${lines}${targets.length > 6 ? `<div class="mini">외 ${targets.length - 6}개</div>` : ''}` : '대상과 할인을 입력하면 손님에게 보이는 가격이 여기 표시됩니다.';
     };
     f.addEventListener('change', upd); f.addEventListener('input', upd); upd();
@@ -603,6 +730,38 @@
       try { const r = await api(`/api/host/spaces/${sid}/automation`, { method: 'PUT', body: { pattern: S.pat } }); toast(`반복 공실을 저장했어요. 매주 ${r.automation.open_cells}칸이 자동으로 열립니다.`); renderSpace(sid, 'pattern'); }
       catch (err) { toast(err.message); act.disabled = false; }
     }
+    if (act && act.dataset.act === 'photo-import') {
+      act.disabled = true; act.textContent = '옮기는 중…';
+      let moved = 0, failed = 0;
+      try {
+        for (let i = 0; i < 10; i++) { const r = await api(`/api/host/spaces/${sid}/photos/import`, { method: 'POST' }); moved += r.moved; failed += r.failed; if (!r.remaining || (!r.moved && !r.failed)) break; }
+        toast(`${moved}장을 옮겼어요.${failed ? ` ${failed}장은 원래 사이트에서 받지 못해 링크로 남겨 뒀어요.` : ''}`);
+      } catch (err) { toast(err.message); }
+      renderSpace(sid, 'photos');
+    }
+    /* 홈 오늘·내일 표 */
+    const bd = e.target.closest('[data-bd]'); if (bd) {
+      const sp = (S.board || []).find(x => x.id === Number(bd.dataset.space));
+      await cycleCell(bd, bd.dataset.space, bd.dataset.slot, bd.dataset.date, sp ? sp.pattern : {}, renderBoard);
+    }
+    /* 공간 '오늘' 화면 */
+    const td = e.target.closest('[data-td]'); if (td && !td.classList.contains('on')) {
+      const v = td.dataset.td, def = td.dataset.def || '';
+      td.parentElement.querySelectorAll('button').forEach(b => { b.disabled = true; });
+      try {
+        await api(`/api/host/spaces/${sid}/vacancies`, { method: 'PUT', body: { items: [{ slot_id: Number(td.dataset.slot), date: td.dataset.date, status: v === def ? 'clear' : v }] } });
+        toast(v === 'booked' ? '예약됨으로 바꿨어요. 이 칸의 할인은 바로 내려갑니다.' : v === 'vacant' ? '비어 있음으로 바꿨어요. 할인 조건에 맞으면 곧 노출돼요.' : '휴무로 바꿨어요.');
+      } catch (err) { toast(err.message); }
+      renderSpace(sid, 'today');
+    }
+    const fl = e.target.closest('[data-flash]'); if (fl) {
+      const sl = S.space.slots.find(x => x.id === Number(fl.dataset.flash));
+      if (confirm(`오늘 ${sl ? sl.name : ''} 반짝딜을 지금부터 2시간 동안 30% 할인으로 열까요?\n(반짝딜은 하루 2번까지, 1건 한정이에요)`)) {
+        try { await api(`/api/host/spaces/${sid}/deals`, { method: 'POST', body: { type: 'FLASH', targets: [{ date: today(), slot_id: Number(fl.dataset.flash) }], discount_mode: 'RATE', discount_value: 30, duration_min: 120, quantity: 1 } }); toast('반짝딜을 열었어요. 손님 화면 맨 위에 보여요.'); renderSpace(sid, 'today'); }
+        catch (err) { toast(err.message); }
+      }
+    }
+    const stpl = e.target.closest('[data-slot-tpl]'); if (stpl) { $('[data-slot-body]').innerHTML = SLOT_TPL[stpl.dataset.slotTpl].map(slotRow).join(''); toast('시간을 채웠어요. 요금을 넣고 저장하세요.'); }
     if (act && act.dataset.act === 'ical-sync') {
       act.disabled = true;
       try { const r = await api(`/api/host/spaces/${sid}/automation/sync`, { method: 'POST' }); toast(r.message || '동기화했어요.'); renderSpace(sid, 'pattern'); }
@@ -645,6 +804,12 @@
   });
   const i_dispatch = el => { const f = el.closest('form'); if (f) f.dispatchEvent(new Event('change')); };
   document.addEventListener('change', async e => {
+    const sw = e.target.closest('[data-sp-switch]'); if (sw) { if (sw.value) location.hash = `space/${sw.value}/${S.tab || ''}`; return; }
+    const dp = e.target.closest('[data-dp-toggle]'); if (dp) {
+      const t = $('[data-slot-tbl]'); t.classList.toggle('show-dp', dp.checked);
+      if (!dp.checked) $$('[data-slot-tbl] .dp input').forEach(i => { i.value = ''; });
+      return;
+    }
     const tg = e.target.closest('[data-sched-toggle]'); if (!tg) return;
     tg.disabled = true;
     try { const r = await api(`/api/host/schedules/${tg.dataset.schedToggle}`, { method: 'PUT', body: { enabled: tg.checked } }); toast(tg.checked ? `켰어요.${r.made ? ` 다가오는 딜 ${r.made}건을 준비했습니다.` : ''}` : '껐어요. 아직 코드가 발급되지 않은 딜은 함께 내려갑니다.'); renderSpace(S.space.id, 'schedules'); }

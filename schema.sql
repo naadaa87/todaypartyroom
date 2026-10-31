@@ -95,8 +95,10 @@ CREATE TABLE IF NOT EXISTS slots (
   kind TEXT DEFAULT 'package',      -- package | hourly
   start_time TEXT NOT NULL,         -- 'HH:MM'
   end_time TEXT NOT NULL,           -- 'HH:MM' (시작보다 작으면 익일)
-  price_weekday INTEGER NOT NULL,
-  price_weekend INTEGER NOT NULL,
+  price_weekday INTEGER NOT NULL,   -- 월~목 (금·일 요금을 따로 안 정하면 금요일에도 적용)
+  price_weekend INTEGER NOT NULL,   -- 토·공휴일 (일요일 요금을 따로 안 정하면 일요일에도 적용)
+  price_fri INTEGER,                -- 금요일·공휴일 전날 (선택)
+  price_sun INTEGER,                -- 일요일 (선택)
   base_people INTEGER DEFAULT 4,
   extra_fee INTEGER DEFAULT 0,
   sort INTEGER DEFAULT 0,

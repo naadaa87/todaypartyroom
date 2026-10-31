@@ -265,3 +265,4 @@ body.has-bookbar .main{padding-bottom:150px}
   .sec{padding:28px 0}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.tbl-scroll .tbl{min-width:560px}

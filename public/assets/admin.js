@@ -87,14 +87,14 @@
       <div class="panel"><h2>호스트</h2><p>${h(s.host_name)} · ${h(s.host_email)} · ${h(s.host_phone)}<br><span class="mini">사업자 ${h(s.biz_no || '-')} · 대표 ${h(s.representative || '-')}</span></p></div>
       <div class="panel"><h2>사진 ${s.photos.length}장</h2><div class="photo-grid">${s.photos.map(p => `<div class="photo"><img src="${h(p)}" alt=""></div>`).join('')}</div></div>
       <div class="panel"><h2>정보</h2><p><b>${h(s.intro)}</b></p><p class="mini">${h(s.address)} ${h(s.address_detail)} · ${s.capacity_std}~${s.capacity_max}명 · ${h(s.floor_info)} · 주차 ${h(s.parking)}</p><p style="white-space:pre-wrap;font-size:13px">${h(s.description)}</p><p class="mini">규칙: ${h(s.rules)}<br>환불: ${h(s.refund_policy)}</p><p class="mini">채널: ${h(s.booking_type)} · ${h(s.booking_url)} · ${h(s.booking_tel)} · ${h(s.booking_kakao)} · 딜링크 ${h(s.deal_link)}</p>
-      <table class="stat-tbl">${s.slots.map(sl => `<tr><td>${h(sl.name)}</td><td>${h(sl.start_time)}~${h(sl.end_time)}</td><td>${won(sl.price_weekday)} / ${won(sl.price_weekend)}</td><td>${sl.base_people}명</td></tr>`).join('')}</table></div>
+      <table class="stat-tbl">${s.slots.map(sl => `<tr><td>${h(sl.name)}</td><td>${h(sl.start_time)}~${h(sl.end_time)}</td><td>월~목 ${won(sl.price_weekday)}${sl.price_fri ? ` · 금 ${won(sl.price_fri)}` : ''} · 토 ${won(sl.price_weekend)}${sl.price_sun ? ` · 일 ${won(sl.price_sun)}` : ''}</td><td>${sl.base_people}명</td></tr>`).join('')}</table></div>
     </div></div>`, 'review');
     $$('[data-judge]').forEach(b => b.addEventListener('click', async e => { e.preventDefault(); const note = $('[data-form=judge] [name=note]').value; try { await api(`/api/admin/spaces/${id}`, { method: 'PUT', body: { action: b.dataset.judge, note } }); toast('처리했어요.'); spaceDetail(id); } catch (err) { toast(err.message); } }));
     $$('[data-extend]').forEach(b => b.addEventListener('click', async () => { try { await api(`/api/admin/spaces/${id}`, { method: 'PUT', body: { action: 'extend', months: b.dataset.extend } }); toast('활성화했어요.'); spaceDetail(id); } catch (err) { toast(err.message); } }));
   }
   async function hosts() {
     const r = await api('/api/admin/hosts');
-    shell(`<div class="c-title"><h1>호스트</h1><span class="sub">${r.hosts.length}명</span></div><div class="tbl-wrap"><table class="a-tbl"><thead><tr><th>ID</th><th>상호</th><th>연락처</th><th>사업자</th><th>공간</th><th>가입</th><th>상태</th><th></th></tr></thead><tbody>${r.hosts.map(x => `<tr><td>${x.id}</td><td><b>${h(x.name)}</b></td><td>${h(x.email)}<br>${h(x.phone)}</td><td>${h(x.biz_no || '-')}</td><td>${x.space_n} (공개 ${x.live_n})</td><td class="mini">${h((x.created_at || '').slice(0, 10))}</td><td>${x.status === 'active' ? '<span class="pill ok">정상</span>' : '<span class="pill bad">정지</span>'}</td><td class="ops">${x.status === 'active' ? `<button class="btn btn-o" data-host="suspend" data-id="${x.id}">정지</button>` : `<button class="btn btn-o" data-host="activate" data-id="${x.id}">해제</button>`}</td></tr>`).join('')}</tbody></table></div>`, 'hosts');
+    shell(`<div class="c-title"><h1>호스트</h1><span class="sub">${r.hosts.length}명</span></div><div class="tbl-wrap"><table class="a-tbl"><thead><tr><th>ID</th><th>상호</th><th>연락처</th><th>사업자</th><th>공간</th><th>가입</th><th>상태</th><th></th></tr></thead><tbody>${r.hosts.map(x => `<tr><td>${x.id}</td><td><b>${h(x.name)}</b></td><td>${h(x.email)}<br>${h(x.phone)}</td><td>${h(x.biz_no || '-')}</td><td>${x.space_n} (공개 ${x.live_n})</td><td class="mini">${h((x.created_at || '').slice(0, 10))}</td><td>${x.status === 'active' ? '<span class="pill ok">정상</span>' : '<span class="pill bad">정지</span>'}</td><td class="ops">${x.status === 'active' ? `<button class="btn btn-p" data-host-open="${x.id}">호스트센터 열기</button>` : ''}<button class="btn btn-o" data-host-cred="${x.id}" data-email="${h(x.email)}">로그인 정보</button>${x.status === 'active' ? `<button class="btn btn-o" data-host="suspend" data-id="${x.id}">정지</button>` : `<button class="btn btn-o" data-host="activate" data-id="${x.id}">해제</button>`}${/\.local$/.test(x.email) ? '<br><span class="mini">운영 계정 · 로그인 정보를 정하면 이메일로도 들어갈 수 있어요</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`, 'hosts');
   }
   async function deals() {
     const r = await api('/api/admin/deals');
@@ -174,6 +174,13 @@
   });
   document.addEventListener('click', async e => {
     const a = e.target.closest('[data-act=logout]'); if (a) { await api('/api/admin/logout', { method: 'POST' }); S.admin = null; route(); }
+    const ho = e.target.closest('[data-host-open]'); if (ho) { try { const r = await api(`/api/admin/hosts/${ho.dataset.hostOpen}`, { method: 'PUT', body: { action: 'impersonate' } }); window.open(r.url, '_blank'); } catch (err) { toast(err.message); } return; }
+    const hc = e.target.closest('[data-host-cred]'); if (hc) {
+      const email = prompt('호스트가 로그인할 이메일', /\.local$/.test(hc.dataset.email) ? '' : hc.dataset.email); if (email === null) return;
+      const pw = prompt('새 비밀번호 (8자 이상, 비우면 이메일만 바꿉니다)', ''); if (pw === null) return;
+      try { const r = await api(`/api/admin/hosts/${hc.dataset.hostCred}`, { method: 'PUT', body: { action: 'credentials', email, password: pw } }); toast(r.message); route(); } catch (err) { toast(err.message); }
+      return;
+    }
     const hs = e.target.closest('[data-host]'); if (hs) { try { await api(`/api/admin/hosts/${hs.dataset.id}`, { method: 'PUT', body: { action: hs.dataset.host } }); route(); } catch (err) { toast(err.message); } }
     const ds = e.target.closest('[data-dealstop]'); if (ds && confirm('이 딜을 중지할까요?')) { try { await api(`/api/admin/deals/${ds.dataset.dealstop}`, { method: 'PUT', body: { action: 'stop' } }); route(); } catch (err) { toast(err.message); } }
     const db = e.target.closest('[data-db]'); if (db) { const label = { install: 'DB 점검·업데이트를 실행할까요?', seed: '샘플 공간 3곳과 매거진 글을 넣을까요?', remove_demo: '샘플 데이터(공간 3곳·샘플 호스트·매거진 글)를 삭제할까요?' }[db.dataset.db]; if (confirm(label)) { try { await api('/api/admin/install', { method: 'POST', body: { action: db.dataset.db } }); toast('완료했어요.'); route(); } catch (err) { toast(err.message); } } }

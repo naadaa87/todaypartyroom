@@ -35,6 +35,7 @@ export async function onRequestGet(context) {
   ]);
   const nearby = region ? (await loadDeals(p.env, settings, { areaIds: [region.id], dateFilter: 'upcoming', limit: 7 })).filter(c => c.space.id !== s.id).slice(0, 6) : [];
   const photos = photosOf(s);
+  const dayPriced = slots.some(sl => (sl.price_fri && sl.price_fri !== sl.price_weekday) || (sl.price_sun && sl.price_sun !== sl.price_weekend));
   const selected = p.url.searchParams.get('deal');
   const path = region ? regionPath(regions, region) : [];
   const bc = breadcrumbs([{ name: '홈', href: '/' }, ...path.map(r => ({ name: r.name, href: regionUrl(regions, r) })), { name: s.name, href: `/space/${s.slug}` }], site);
@@ -113,9 +114,11 @@ ${preview ? `<div class="notice">호스트 미리보기 — 이 공간은 아직
 
 <section class="sec"><div class="wrap">
   ${sectionTitle('요금표')}
-  <table class="tbl"><thead><tr><th>구분</th><th>시간</th><th>평일</th><th>주말·공휴일</th><th>기준 인원</th></tr></thead><tbody>
+  ${dayPriced ? `<div class="tbl-scroll"><table class="tbl"><thead><tr><th>구분</th><th>시간</th><th>월~목</th><th>금</th><th>토·공휴일</th><th>일</th><th>기준 인원</th></tr></thead><tbody>
+  ${slots.map(sl => `<tr><td>${esc(sl.name)}</td><td>${esc(sl.start_time)}~${esc(sl.end_time)}${sl.kind === 'hourly' ? ' (시간당)' : ''}</td><td>${won(sl.price_weekday)}</td><td>${won(sl.price_fri || sl.price_weekday)}</td><td>${won(sl.price_weekend)}</td><td>${won(sl.price_sun || sl.price_weekend)}</td><td>${sl.base_people}명${sl.extra_fee ? ` · 추가 ${won(sl.extra_fee)}/인` : ''}</td></tr>`).join('')}
+  </tbody></table></div><p class="muted">공휴일은 토요일 요금, 공휴일 전날은 금요일 요금(일요일이면 토요일 요금) 기준이에요. 정확한 금액은 예약 화면에서 한 번 더 확인해 주세요.</p>` : `<table class="tbl"><thead><tr><th>구분</th><th>시간</th><th>평일</th><th>주말·공휴일</th><th>기준 인원</th></tr></thead><tbody>
   ${slots.map(sl => `<tr><td>${esc(sl.name)}</td><td>${esc(sl.start_time)}~${esc(sl.end_time)}${sl.kind === 'hourly' ? ' (시간당)' : ''}</td><td>${won(sl.price_weekday)}</td><td>${won(sl.price_weekend)}</td><td>${sl.base_people}명${sl.extra_fee ? ` · 추가 ${won(sl.extra_fee)}/인` : ''}</td></tr>`).join('')}
-  </tbody></table>
+  </tbody></table>`}
   ${s.deposit_text ? `<p class="muted">${esc(s.deposit_text)}</p>` : ''}
 </div></section>
 
