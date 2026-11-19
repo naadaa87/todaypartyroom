@@ -5,4 +5,5 @@ Disallow: /admin
 Disallow: /me
 Disallow: /api/
 Disallow: /*?d=
+Disallow: /cdn-cgi/
 Sitemap: /sitemap.xml
