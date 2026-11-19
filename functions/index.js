@@ -30,7 +30,7 @@ export async function onRequestGet(context) {
     <button type="button" class="btn btn-o btn-lg" data-open-region>📍 ${esc(scopeName)} <small>변경</small></button>
     <a class="btn btn-p btn-lg" href="${scopeUrl}">오늘 비는 곳 보기</a>
   </div>
-  <p class="hero-live">지금 ${esc(scopeName)} 파티룸 <b>${totalLive}곳</b> · 오늘 비는 곳 <b>${today.length}곳</b> · 내일 비는 곳 <b>${tomorrow.length}곳</b></p>
+  ${totalLive ? `<p class="hero-live">지금 ${esc(scopeName)} 파티룸 <b>${totalLive}곳</b> · 오늘 비는 곳 <b>${today.length}곳</b> · 내일 비는 곳 <b>${tomorrow.length}곳</b></p>` : `<p class="hero-live">${esc(scopeName)} 파티룸을 차례로 등록하고 있어요. 호스트라면 빈 시간을 지금 올려 보세요.</p>`}
 </div></section>
 
 <section class="sec"><div class="wrap">
@@ -73,7 +73,9 @@ ${hostCta(settings)}`;
   return html(layout({
     settings, regions, region, site, nav: 'home',
     title: `${settings.site_name} — ${settings.site_tagline}`,
-    description: `오늘·내일 비어 있는 파티룸을 당일·전날 할인으로 예약하세요. ${scopeName} 파티룸 ${totalLive}곳, 오늘 비는 곳 ${today.length}곳. 타임딜·핫딜·반짝딜 특가 모음.`,
+    description: today.length
+      ? `오늘·내일 비어 있는 파티룸을 당일·전날 할인으로 예약하세요. ${scopeName} 파티룸 ${totalLive}곳 중 오늘 ${today.length}곳이 할인 중. 타임딜·핫딜·반짝딜 특가 모음.`
+      : `오늘·내일 비어 있는 파티룸을 당일·전날 할인가로 모아 보는 곳. 지역·인원·시간대별로 비교하고, 원하는 지역에 빈 방이 나오면 알림을 받아 보세요.`,
     canonical: `${site}/`,
     jsonld: [orgJsonLd(settings, site), websiteJsonLd(settings, site)],
     body,
